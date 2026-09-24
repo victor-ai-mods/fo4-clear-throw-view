@@ -1,0 +1,10 @@
+# Сгенерированное: esp из tools/gen_esp.py, .pex из PapyrusCompiler
+build/
+
+*.log
+__pycache__/
+*.pyc
+
+# Материалы страницы на Nexus
+release/
+images/

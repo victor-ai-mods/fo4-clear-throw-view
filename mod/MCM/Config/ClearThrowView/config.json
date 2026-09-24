@@ -1,0 +1,89 @@
+{
+    "modName": "ClearThrowView",
+    "displayName": "$CTV_MOD_NAME",
+    "minMcmVersion": 2,
+    "pluginRequirements": [
+        "ClearThrowView.esp"
+    ],
+    "content": [
+        {
+            "type": "text",
+            "text": "$CTV_ABOUT"
+        },
+        {
+            "type": "spacer"
+        },
+        {
+            "type": "section",
+            "text": "$CTV_SEC_MAIN"
+        },
+        {
+            "id": "bEnabled:Main",
+            "type": "switcher",
+            "text": "$CTV_ENABLED",
+            "help": "$CTV_ENABLED_HELP",
+            "valueOptions": {
+                "sourceType": "ModSettingBool"
+            }
+        },
+        {
+            "id": "bRedraw:Main",
+            "type": "switcher",
+            "text": "$CTV_REDRAW",
+            "help": "$CTV_REDRAW_HELP",
+            "valueOptions": {
+                "sourceType": "ModSettingBool"
+            }
+        },
+        {
+            "id": "fRedrawDelay:Main",
+            "type": "slider",
+            "text": "$CTV_REDRAW_DELAY",
+            "help": "$CTV_REDRAW_DELAY_HELP",
+            "valueOptions": {
+                "min": 0.1,
+                "max": 3.0,
+                "step": 0.1,
+                "sourceType": "ModSettingFloat"
+            }
+        },
+        {
+            "type": "spacer"
+        },
+        {
+            "type": "section",
+            "text": "$CTV_SEC_SPLIT"
+        },
+        {
+            "id": "bSplitKeys:Main",
+            "type": "switcher",
+            "text": "$CTV_SPLIT",
+            "help": "$CTV_SPLIT_HELP",
+            "valueOptions": {
+                "sourceType": "ModSettingBool"
+            }
+        },
+        {
+            "id": "BashHotkey",
+            "type": "hotkey",
+            "text": "$CTV_BASH_KEY",
+            "help": "$CTV_BASH_KEY_HELP"
+        },
+        {
+            "type": "spacer"
+        },
+        {
+            "type": "section",
+            "text": "$CTV_SEC_DEBUG"
+        },
+        {
+            "id": "bLog:Main",
+            "type": "switcher",
+            "text": "$CTV_LOG",
+            "help": "$CTV_LOG_HELP",
+            "valueOptions": {
+                "sourceType": "ModSettingBool"
+            }
+        }
+    ]
+}

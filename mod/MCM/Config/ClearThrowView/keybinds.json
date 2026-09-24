@@ -1,0 +1,16 @@
+{
+    "modName": "ClearThrowView",
+    "keybinds": [
+        {
+            "id": "BashHotkey",
+            "desc": "$CTV_BASH_KEY",
+            "action": {
+                "type": "CallFunction",
+                "form": "ClearThrowView.esp|800",
+                "scriptName": "CTV:ThrowQuest",
+                "function": "Bash",
+                "params": []
+            }
+        }
+    ]
+}
