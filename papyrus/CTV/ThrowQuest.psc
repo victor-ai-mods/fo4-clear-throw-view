@@ -28,9 +28,12 @@ Int Property TIMER_HOLD = 1 AutoReadOnly
 Int Property TIMER_REDRAW = 2 AutoReadOnly
 Int Property TIMER_CHECK = 3 AutoReadOnly
 Int Property TIMER_VERIFY = 4 AutoReadOnly
-Float Property CHECK_DELAY = 0.8 AutoReadOnly     ; после отпускания: граната уже должна уйти из инвентаря
+Float Property POLL_INTERVAL = 0.1 AutoReadOnly   ; опрос после отпускания
+Float Property POLL_LIMIT = 1.5 AutoReadOnly      ; дольше не ждать: бросок либо прошёл, либо повторять нечего
 Float Property VERIFY_DELAY = 1.0 AutoReadOnly    ; после повторного броска ActionThrow
+Float Property SERIES_GAP = 1.0 AutoReadOnly      ; нажатия чаще — серия быстрых бросков, оружие не трогать
 Float Property MIN_HOLD_DELAY = 0.05 AutoReadOnly
+Float Property SPLIT_HOLD_DELAY = 0.2 AutoReadOnly ; раздельные клавиши: убирать, если держат дольше
 String Property LOG_PATH = ".\\Data\\ClearThrowView\\" AutoReadOnly
 String Property LOG_FILE = "ClearThrowView.log" AutoReadOnly
 Int Property MAX_LOG_LINES = 100 AutoReadOnly
@@ -51,7 +54,18 @@ Int CountBefore                     ; сколько его было при на
 Float DownTime
 Float HolsterTime
 Float UpTime
+Float LastPressTime = -100.0        ; прошлое нажатие броска (реальное время)
+Float PressGap                      ; пауза перед текущим нажатием
+Bool InSeries                       ; текущее нажатие — часть серии быстрых нажатий
+Bool PressHolstered                 ; на текущем нажатии мод убрал оружие
+Int PressSeq                        ; номер нажатия
+Int UpHandledSeq                    ; нажатие, отпускание которого уже обработано
+Bool DownDone                       ; обработка текущего нажатия закончена
+Bool Released                       ; текущее нажатие уже отпущено
+Bool PressActive                    ; текущее нажатие мод отслеживает (есть что бросать и т. д.)
 Float HeldTime
+Bool ReleasedDrawn                  ; при отпускании оружие ещё в руках — шла анимация убирания
+String PollTrace                    ; замеры опроса для лога: время:оружие:кол-во
 String[] LogBuf
 
 Event OnQuestInit()
@@ -69,6 +83,7 @@ Function Setup()
     RegisterForExternalEvent("OnMCMSettingChange|" + MOD_NAME, "OnMCMSettingChange")
     Holding = false
     WeHolstered = false
+    LastPressTime = -100.0      ; GetCurrentRealTime считается от запуска игры, а переменная — из сейва
     ; Настоящее значение из ini. 0 — это, скорее всего, наше же обнуление из прошлого сейва
     ; этой сессии: тогда остаётся уже известное.
     Float iniDelay = GardenOfEden.GetINISetting(THROW_DELAY_INI) as Float
@@ -118,8 +133,48 @@ Function Bash()
     Log("bash key: ActionMelee " + ok)
 EndFunction
 
+; Нажатие и отпускание отмечаются ПЕРВЫМИ строками, до любого вызова наружу: при вызове
+; функции другого объекта (Game.GetPlayer(), GetEquippedWeapon…) Papyrus отпускает
+; блокировку скрипта, и в этот момент может выполниться OnControlUp. Раньше отпускание
+; приходило, пока OnControlDown ещё не выставил Holding, и терялось — без проверки и
+; повтора бросок пропадал (видно по логу). Теперь отпускание, пришедшее раньше конца
+; обработки нажатия, обрабатывает сам OnControlDown, когда закончит (HandleUp — один раз
+; на нажатие, по номеру PressSeq).
 Event OnControlDown(String control)
-    If control != CONTROL_THROW || !Enabled || Utility.IsInMenuMode()
+    If control != CONTROL_THROW
+        Return
+    EndIf
+    PressSeq += 1
+    Int seq = PressSeq
+    Holding = true
+    Released = false
+    DownDone = false
+    PressActive = false
+    PressHolstered = false
+    HandleDown()
+    If seq == PressSeq
+        DownDone = true
+        If Released
+            HandleUp(seq)
+        EndIf
+    EndIf
+EndEvent
+
+Event OnControlUp(String control, Float time)
+    If control != CONTROL_THROW
+        Return
+    EndIf
+    Holding = false
+    Released = true
+    HeldTime = time
+    Int seq = PressSeq
+    If DownDone
+        HandleUp(seq)
+    EndIf
+EndEvent
+
+Function HandleDown()
+    If !Enabled || Utility.IsInMenuMode()
         Return
     EndIf
     Actor player = Game.GetPlayer()
@@ -127,46 +182,60 @@ Event OnControlDown(String control)
         Log("down: nothing to throw")
         Return
     EndIf
+    Float now = Utility.GetCurrentRealTime()
+    PressGap = now - LastPressTime
+    LastPressTime = now
+    InSeries = PressGap < SERIES_GAP
     If WeHolstered
         ; Следующий бросок, пока оружие ещё не достали: подождать и его.
         CancelTimer(TIMER_REDRAW)
         CancelTimer(TIMER_CHECK)
         CancelTimer(TIMER_VERIFY)
-        RememberThrowItem(player)
-        Holding = true
-        Log("down: next throw, redraw postponed")
-        Return
+        If !player.IsWeaponDrawn()
+            RememberThrowItem(player)
+            PressActive = true
+            Log("down: next throw, redraw postponed")
+            Return
+        EndIf
+        ; Оружие снова в руках: ActionThrow бросает с оружием (видно по логу) — убрать заново.
+        Log("down: next throw, weapon is drawn again")
     EndIf
     If !player.IsWeaponDrawn()
         Log("down: weapon already holstered")
         Return
     EndIf
     RememberThrowItem(player)
-    Holding = true
-    If SplitKeys
-        Holster("on press")
-    Else
-        Float delay = OriginalThrowDelay
-        If delay < MIN_HOLD_DELAY
-            delay = MIN_HOLD_DELAY
-        EndIf
-        StartTimer(delay, TIMER_HOLD)
+    PressActive = true
+    ; Без раздельных клавиш — когда нажатие становится броском (fThrowDelay). С раздельными
+    ; бросок начинается сразу, но убирать оружие сразу нельзя: короткое нажатие тогда всегда
+    ; срывалось и шло через повтор. Короткие нажатия в логе — 0,05–0,15 с.
+    Float delay = SPLIT_HOLD_DELAY
+    If !SplitKeys
+        delay = OriginalThrowDelay
     EndIf
-EndEvent
+    If delay < MIN_HOLD_DELAY
+        delay = MIN_HOLD_DELAY
+    EndIf
+    StartTimer(delay, TIMER_HOLD)
+EndFunction
 
-Event OnControlUp(String control, Float time)
-    If control != CONTROL_THROW || !Holding
+Function HandleUp(Int seq)
+    If UpHandledSeq == seq
         Return
     EndIf
-    Holding = false
+    UpHandledSeq = seq
+    If !PressActive
+        Return
+    EndIf
     CancelTimer(TIMER_HOLD)
     UpTime = Utility.GetCurrentRealTime()
-    HeldTime = time
-    Log("up after " + time + " s, holstered by mod " + WeHolstered + " (" + (UpTime - HolsterTime) + " s after holster)")
+    Log("up after " + HeldTime + " s, holstered by mod " + WeHolstered + " (" + (UpTime - HolsterTime) + " s after holster)")
     If WeHolstered
-        StartTimer(CHECK_DELAY, TIMER_CHECK)
+        ReleasedDrawn = Game.GetPlayer().IsWeaponDrawn()
+        PollTrace = ""
+        CheckThrow()
     EndIf
-EndEvent
+EndFunction
 
 Function RememberThrowItem(Actor player)
     DownTime = Utility.GetCurrentRealTime()
@@ -175,19 +244,45 @@ Function RememberThrowItem(Actor player)
 EndFunction
 
 ; Бросок сорвался? Если отпустить клавишу, пока идёт анимация убирания оружия, игра
-; отменяет бросок. Признак — граната не ушла из инвентаря. Коротким нажатием (удар, не
-; бросок) это не считается: без раздельных клавиш бросок начинается только после fThrowDelay.
+; отменяет бросок (проверено по логу: отпускание через 0,29–0,36 с после ActionSheath).
+; Опрос каждые POLL_INTERVAL после отпускания:
+;   граната ушла из инвентаря            -> бросок прошёл сам;
+;   отпущено во время убирания, и оружие
+;   уже убрано                           -> бросить сразу (ActionThrow);
+;   прошло POLL_LIMIT                    -> больше не ждать, ничего не делать.
+; Повтора «по таймауту» нет: бросок с оружием в руках уходит через 0,7–0,8 с после
+; отпускания, и повтор по времени бросал бы вторую гранату.
+; Коротким нажатием (удар, не бросок) это не считается: без раздельных клавиш бросок
+; начинается только после fThrowDelay.
 Function CheckThrow()
+    If Holding
+        Return      ; уже новое нажатие — проверит его отпускание (таймер мог прийти после CancelTimer)
+    EndIf
     Actor player = Game.GetPlayer()
+    Float elapsed = Utility.GetCurrentRealTime() - UpTime
     Bool wasThrow = SplitKeys || HeldTime >= OriginalThrowDelay
+    If !wasThrow || !ThrowItem || player.GetEquippedWeapon(EQUIP_INDEX_THROWABLE) != ThrowItem
+        Log("check: not a throw (held " + HeldTime + " s)")
+        FinishThrow(RedrawDelay - elapsed)
+        Return
+    EndIf
     Int count = player.GetItemCount(ThrowItem)
-    If wasThrow && ThrowItem && count >= CountBefore && player.GetEquippedWeapon(EQUIP_INDEX_THROWABLE) == ThrowItem
+    Bool drawn = player.IsWeaponDrawn()
+    PollTrace += " " + (Math.Floor(elapsed * 100.0) / 100.0) + ":" + drawn + ":" + count
+    If count < CountBefore
+        Log("check: thrown by game; released drawn " + ReleasedDrawn + ", " + (UpTime - HolsterTime) + " s after holster; trace" + PollTrace)
+        FinishThrow(RedrawDelay - elapsed)
+    ElseIf PressHolstered && ReleasedDrawn && !drawn
         Bool ok = player.PlayIdleAction(ActionThrow)
-        Log("check: NOT thrown (count " + count + "), released " + (UpTime - HolsterTime) + " s after holster; ActionThrow " + ok)
+        Log("check: NOT thrown, ActionThrow " + ok + "; released " + (UpTime - HolsterTime) + \
+            " s after holster; trace" + PollTrace)
         StartTimer(VERIFY_DELAY, TIMER_VERIFY)
+    ElseIf elapsed >= POLL_LIMIT
+        Log("check: gave up; released drawn " + ReleasedDrawn + ", " + (UpTime - HolsterTime) + \
+            " s after holster; trace" + PollTrace)
+        FinishThrow(RedrawDelay - elapsed)
     Else
-        Log("check: ok (count " + CountBefore + " -> " + count + ", was throw " + wasThrow + ")")
-        FinishThrow(RedrawDelay - CHECK_DELAY)
+        StartTimer(POLL_INTERVAL, TIMER_CHECK)
     EndIf
 EndFunction
 
@@ -210,7 +305,14 @@ Event OnTimer(Int aiTimerID)
     ElseIf aiTimerID == TIMER_CHECK
         CheckThrow()
     ElseIf aiTimerID == TIMER_VERIFY
-        Log("verify: count after ActionThrow " + Game.GetPlayer().GetItemCount(ThrowItem) + " (was " + CountBefore + ")")
+        Int left = Game.GetPlayer().GetItemCount(ThrowItem)
+        String note = ""
+        If left < CountBefore - 1
+            note = "  DOUBLE THROW"
+        ElseIf left >= CountBefore
+            note = "  NO THROW"
+        EndIf
+        Log("verify: count after ActionThrow " + left + " (was " + CountBefore + ")" + note)
         FinishThrow(RedrawDelay)
     ElseIf aiTimerID == TIMER_REDRAW
         WeHolstered = false
@@ -226,14 +328,31 @@ Event OnTimer(Int aiTimerID)
     EndIf
 EndEvent
 
+; Только на первом нажатии серии (перед ним SERIES_GAP без нажатий): при частых нажатиях
+; каждое новое убирание прерывало уже начатый бросок (видно по логу), и бросок не проходил,
+; пока не перестать жать. Пауза «после своего действия» не помогала — истекала посреди серии.
+; Во время серии оружие остаётся как есть, броски целиком на игре.
 Function Holster(String reason)
     Actor player = Game.GetPlayer()
     If !player.IsWeaponDrawn()
         Return
     EndIf
-    Bool ok = player.PlayIdleAction(ActionSheath)
+    If InSeries
+        Log("holster (" + reason + "): skipped, " + PressGap + " s after previous press")
+        Return
+    EndIf
+    Float now = Utility.GetCurrentRealTime()
+    ; После вызовов наружу клавишу могли уже отпустить — тогда не убирать: бросок уже идёт.
+    ; Флаги — до ActionSheath: отпускание во время этого вызова должно увидеть, что оружие
+    ; убирается, и запустить проверку броска.
+    If !Holding
+        Log("holster (" + reason + "): skipped, already released")
+        Return
+    EndIf
     WeHolstered = true
-    HolsterTime = Utility.GetCurrentRealTime()
+    PressHolstered = true
+    HolsterTime = now
+    Bool ok = player.PlayIdleAction(ActionSheath)
     Log("holster (" + reason + ", " + (HolsterTime - DownTime) + " s after down): ActionSheath " + ok)
 EndFunction
 
