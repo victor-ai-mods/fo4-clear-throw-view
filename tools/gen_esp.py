@@ -26,9 +26,7 @@ PLUGIN_NAME = 'ClearThrowView.esp'
 FID_QUEST = 0x01000800
 NEXT_OBJECT_ID = 0x00000801
 
-AACT_SHEATH = 0x00046BAF        # ActionSheath (Fallout4.esm)
 AACT_MELEE = 0x00004A59         # ActionMelee — удар прикладом
-AACT_THROW = 0x00004E32         # ActionThrow — бросок гранаты (повтор сорвавшегося броска)
 
 SCRIPT_QUEST = 'CTV:ThrowQuest'
 
@@ -36,9 +34,7 @@ SCRIPT_QUEST = 'CTV:ThrowQuest'
 def build_qust():
     r = Record(b'QUST', FID_QUEST, 'CTV_Quest')
     s = Script(SCRIPT_QUEST)
-    s.prop('ActionSheath', PROP_OBJECT, AACT_SHEATH)
     s.prop('ActionMelee', PROP_OBJECT, AACT_MELEE)
-    s.prop('ActionThrow', PROP_OBJECT, AACT_THROW)
     r.add(b'VMAD', vmad([s]))
     r.add(b'FULL', zstring('Clear Throw View'))
     # 0x0111 = Start Game Enabled | 0x10 | Run Once — как у AM_Quest / QuickAid.

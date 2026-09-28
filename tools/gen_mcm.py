@@ -24,17 +24,12 @@ SCRIPT = 'CTV:ThrowQuest'
 STRINGS = {
     'en': {
         'MOD_NAME': 'Clear Throw View',
-        'ABOUT': 'While you hold the throw key, your weapon is holstered so that neither the weapon nor your hands '
-                 'hide the grenade trajectory. After the throw the weapon is drawn again. '
-                 'A short press still bashes as usual.',
+        'ABOUT': 'While you hold the throw key, your hands and weapon are hidden so that they do not cover the '
+                 'grenade trajectory. A short press still bashes as usual.',
         'SEC_MAIN': 'Throwing',
-        'ENABLED': 'Holster the weapon when throwing',
-        'ENABLED_HELP': 'Only when a grenade or mine is equipped. The weapon is holstered as soon as the press '
+        'ENABLED': 'Hide hands while aiming a throw',
+        'ENABLED_HELP': 'Only when a grenade or mine is equipped. Hands and weapon are hidden as soon as the press '
                         'becomes a throw, so a short press still bashes.',
-        'REDRAW': 'Draw the weapon after the throw',
-        'REDRAW_HELP': 'Draw the weapon again after the throw, if the mod holstered it.',
-        'REDRAW_DELAY': 'Draw after, s',
-        'REDRAW_DELAY_HELP': 'Time after releasing the throw key. Too short a delay can interrupt the throw animation.',
         'SEC_SPLIT': 'Separate throw and bash keys',
         'SPLIT': 'Throw key only throws',
         'SPLIT_HELP': 'The throw key throws at once, even on a short press, and does not bash. '
@@ -47,17 +42,12 @@ STRINGS = {
     },
     'ru': {
         'MOD_NAME': 'Clear Throw View',
-        'ABOUT': 'Пока удерживается клавиша броска, оружие убрано в кобуру, и ни оружие, ни руки не закрывают '
-                 'траекторию гранаты. После броска оружие достаётся обратно. '
+        'ABOUT': 'Пока удерживается клавиша броска, руки и оружие скрыты и не закрывают траекторию гранаты. '
                  'Короткое нажатие, как и раньше, — удар прикладом.',
         'SEC_MAIN': 'Бросок',
-        'ENABLED': 'Убирать оружие при броске',
-        'ENABLED_HELP': 'Только если экипирована граната или мина. Оружие убирается, когда нажатие становится '
-                        'броском, поэтому короткое нажатие — по-прежнему удар.',
-        'REDRAW': 'Доставать оружие после броска',
-        'REDRAW_HELP': 'После броска снова достать оружие, если его убрал мод.',
-        'REDRAW_DELAY': 'Доставать через, с',
-        'REDRAW_DELAY_HELP': 'Время после отпускания клавиши броска. Слишком короткая задержка может прервать анимацию броска.',
+        'ENABLED': 'Скрывать руки при прицеливании',
+        'ENABLED_HELP': 'Только если экипирована граната или мина. Руки и оружие скрываются, когда нажатие '
+                        'становится броском, поэтому короткое нажатие — по-прежнему удар.',
         'SEC_SPLIT': 'Раздельные клавиши броска и удара',
         'SPLIT': 'Клавиша броска только бросает',
         'SPLIT_HELP': 'Клавиша броска бросает сразу, даже при коротком нажатии, и не бьёт прикладом. '
@@ -76,12 +66,8 @@ HOTKEYS = [
 
 SETTINGS = [
     ('bEnabled', 1),
-    ('bRedraw', 1),
     ('bSplitKeys', 0),
     ('bLog', 0),
-]
-SETTINGS_FLOAT = [
-    ('fRedrawDelay', 1.0),
 ]
 
 
@@ -99,19 +85,12 @@ def switcher(setting, key):
             'valueOptions': {'sourceType': 'ModSettingBool'}}
 
 
-def slider(setting, key, lo, hi, step):
-    return {'id': setting + ':Main', 'type': 'slider', 'text': t(key), 'help': t(key + '_HELP'),
-            'valueOptions': {'min': lo, 'max': hi, 'step': step, 'sourceType': 'ModSettingFloat'}}
-
-
 def config():
     content = [
         {'type': 'text', 'text': t('ABOUT')},
         {'type': 'spacer'},
         {'type': 'section', 'text': t('SEC_MAIN')},
         switcher('bEnabled', 'ENABLED'),
-        switcher('bRedraw', 'REDRAW'),
-        slider('fRedrawDelay', 'REDRAW_DELAY', 0.1, 3.0, 0.1),
         {'type': 'spacer'},
         {'type': 'section', 'text': t('SEC_SPLIT')},
         switcher('bSplitKeys', 'SPLIT'),
@@ -150,8 +129,7 @@ def main():
     write_json(os.path.join(cfg_dir, 'config.json'), config())
     write_json(os.path.join(cfg_dir, 'keybinds.json'), keybinds())
     with open(os.path.join(cfg_dir, 'settings.ini'), 'w', encoding='ascii', newline='\r\n') as f:
-        f.write('[Main]\n' + ''.join('%s=%d\n' % kv for kv in SETTINGS) +
-                ''.join('%s=%.1f\n' % kv for kv in SETTINGS_FLOAT))
+        f.write('[Main]\n' + ''.join('%s=%d\n' % kv for kv in SETTINGS))
 
     keys = set(STRINGS['en'])
     tr_dir = os.path.join(OUT, 'Interface', 'Translations')

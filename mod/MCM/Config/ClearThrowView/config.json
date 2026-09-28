@@ -27,27 +27,6 @@
             }
         },
         {
-            "id": "bRedraw:Main",
-            "type": "switcher",
-            "text": "$CTV_REDRAW",
-            "help": "$CTV_REDRAW_HELP",
-            "valueOptions": {
-                "sourceType": "ModSettingBool"
-            }
-        },
-        {
-            "id": "fRedrawDelay:Main",
-            "type": "slider",
-            "text": "$CTV_REDRAW_DELAY",
-            "help": "$CTV_REDRAW_DELAY_HELP",
-            "valueOptions": {
-                "min": 0.1,
-                "max": 3.0,
-                "step": 0.1,
-                "sourceType": "ModSettingFloat"
-            }
-        },
-        {
             "type": "spacer"
         },
         {
