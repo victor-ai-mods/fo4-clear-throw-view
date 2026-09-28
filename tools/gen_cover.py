@@ -70,7 +70,7 @@ def cover():
     d = ImageDraw.Draw(img)
     d.line((0, TOP, W, TOP), fill=GREEN, width=4)
     text_center(d, W / 2, 28, 'CLEAR THROW VIEW', font(120), GREEN)
-    text_center(d, W / 2, 160, 'The weapon is holstered while you aim a grenade - see exactly where it lands',
+    text_center(d, W / 2, 160, 'The weapon is lowered while you aim a grenade - see exactly where it lands',
                 font(40, 'SemiBold'), WHITE)
     label(img, pw / 2, TOP + 40, 'VANILLA', RED, 54)
     label(img, pw + pw / 2, TOP + 40, 'WITH CLEAR THROW VIEW', GREEN, 54)
