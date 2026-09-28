@@ -1,7 +1,7 @@
 """
 Раскладка собранного мода по игре.
 
-  python tools/deploy.py            — esp, .pex, файлы из mod/ в Data, включить плагин
+  python tools/deploy.py            — esp, .pex, файлы из mod/, клипы из build/anims в Data, включить плагин
   python tools/deploy.py --remove   — снять плагин и убрать файлы мода
 
 `Plugins.txt` в этой установке живёт в ДВУХ местах (игра читает
@@ -70,6 +70,15 @@ def mod_files():
     return sorted(out)
 
 
+def anim_files():
+    """Клипы из tools/gen_anims.py (build/anims.txt — пути от Data)."""
+    listing = os.path.join(ROOT, 'build', 'anims.txt')
+    if not os.path.exists(listing):
+        return []
+    with open(listing, encoding='utf-8') as f:
+        return [ln.strip() for ln in f if ln.strip()]
+
+
 def script_paths():
     return [(os.path.join(ROOT, 'build', 'scripts', 'CTV', n),
              os.path.join(DATA, 'Scripts', 'CTV', n)) for n in SCRIPTS]
@@ -82,6 +91,13 @@ def install():
         copy(src, dst)
     for rel in mod_files():
         copy(os.path.join(MOD_FILES, rel), os.path.join(DATA, rel))
+    # Клипы — без резервных копий: их 120, и они пересобираются из архивов игры.
+    anims = anim_files()
+    for rel in anims:
+        dst = os.path.join(DATA, rel)
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copyfile(os.path.join(ROOT, 'build', 'anims', rel), dst)
+    print('  клипов позы gun down: %d (Data/Meshes/Actors/...)' % len(anims))
     print('Порядок загрузки:')
     set_enabled(True)
 
@@ -97,6 +113,13 @@ def remove():
             backup(path)
             os.remove(path)
             print('  удалён %s' % path)
+    removed = 0
+    for rel in anim_files():
+        path = os.path.join(DATA, rel)
+        if os.path.exists(path):
+            os.remove(path)
+            removed += 1
+    print('  удалено клипов: %d' % removed)
 
 
 def main():

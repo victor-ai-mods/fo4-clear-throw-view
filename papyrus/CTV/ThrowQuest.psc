@@ -1,39 +1,51 @@
 Scriptname CTV:ThrowQuest extends Quest
 
-; Clear Throw View: пока удерживается бросок гранаты, руки и оружие от первого лица скрыты
-; (Game.ShowFirstPersonGeometry), чтобы они не закрывали траекторию. Сам бросок (замах
-; рукой) виден: руки возвращаются при отпускании клавиши.
+; Clear Throw View: пока удерживается бросок гранаты, оружие опущено вниз, чтобы оно не
+; закрывало траекторию. Это ванильная поза «оружие опущено» (gun down — как у стены или при
+; прицеле на своего), включённая через ActionGunDown; мод поставляет её клипы
+; (WPNIdleGunDown.hkx / WPNRunGunDown.hkx, tools/gen_anims.py), опущенные ниже ванильных.
+; При отпускании игра сама играет замах и бросок и поднимает оружие.
 ;
 ; Бросок в Fallout 4 — контрол "Melee" (по умолчанию Alt, на геймпаде RB): короткое
-; нажатие — удар прикладом, удержание дольше fThrowDelay:Controls — граната. Руки
-; скрываются, когда нажатие становится броском (через fThrowDelay), поэтому удар прикладом
+; нажатие — удар прикладом, удержание дольше fThrowDelay:Controls — граната. Оружие
+; опускается, когда нажатие становится броском (через fThrowDelay), поэтому удар прикладом
 ; не страдает.
+;
+; У оружия ближнего боя позы нет (PlayIdleAction возвращает false) — мод ничего не делает:
+; в ванильном броске оружие ближнего боя и так отводится назад и траекторию не закрывает.
 ;
 ; Раздельные клавиши (MCM): fThrowDelay = 0 — клавиша броска только бросает; удар
 ; прикладом — отдельной клавишей MCM (ActionMelee). Значение fThrowDelay меняется только в
 ; памяти игры и не сохраняется в ini.
 ;
-; Проверено в игре (2026-09-28): ShowFirstPersonGeometry(false) во время удержания прячет
-; руки и оружие, траектория видна целиком, броски не срываются и идут быстро. Клип броска
+; Проверено в игре (2026-09-28): PlayIdleAction(ActionGunDown) во время удержания держит позу
+; до отпускания, бросок проходит, после него оружие поднимается само; с опущенными клипами
+; траектория видна целиком и стоя, и на ходу. Клип броска
 ; (WPNGrenadeThrow.hkx) играет после отпускания: вылет гранаты — через ~0,7 с, throwEnd —
 ; через ~1,4 с. Во время удержания граф анимации рук ничего не знает о прицеливании
 ; (bIsThrowing и прочие переменные меняются только при отпускании).
 ;
-; Версия 1.0 вместо этого убирала оружие в кобуру; игра срывала броски, отпущенные во время
-; анимации убирания или наложившиеся на предыдущий бросок, — всё это ушло вместе с кобурой.
+; Версия 1.0 убирала оружие в кобуру; игра срывала броски, отпущенные во время анимации
+; убирания или наложившиеся на предыдущий бросок, — всё это ушло вместе с кобурой. 1.1
+; скрывала руки (Game.ShowFirstPersonGeometry) — работало, но выглядело как сбой анимации (и
+; подозревается в подмене модели гранаты: пересоздание рук посреди броска). Из скрипта
+; не работают (проверено): SetAnimationVariableInt("iSyncGunDown"), PlayAnimation("CullWeapons"),
+; динамические idle во время удержания (срывают бросок).
 
 Action Property ActionMelee Auto Const Mandatory
+Action Property ActionGunDown Auto Const Mandatory
 
 String Property MOD_NAME = "ClearThrowView" AutoReadOnly
 String Property CONTROL_THROW = "Melee" AutoReadOnly
 String Property THROW_DELAY_INI = "fThrowDelay:Controls" AutoReadOnly
 Int Property EQUIP_INDEX_THROWABLE = 2 AutoReadOnly
 Int Property TIMER_HOLD = 1 AutoReadOnly
-Int Property TIMER_WATCH = 2 AutoReadOnly
+Int Property TIMER_GUNDOWN = 3 AutoReadOnly
 Int Property TIMER_FLUSH = 8 AutoReadOnly
 Float Property MIN_HOLD_DELAY = 0.05 AutoReadOnly
-Float Property SPLIT_HOLD_DELAY = 0.2 AutoReadOnly ; раздельные клавиши: короткие нажатия (0,05–0,15 с) не скрывать
-Float Property WATCH_STEP = 0.25 AutoReadOnly      ; пока руки скрыты — проверка, не пора ли показать
+Float Property SPLIT_HOLD_DELAY = 0.2 AutoReadOnly ; раздельные клавиши: короткие нажатия (0,05–0,15 с) не трогать
+Float Property GUNDOWN_RETRY_STEP = 0.1 AutoReadOnly ; после throwEnd игра ещё ~0,1 с считает, что бросок идёт
+Int Property GUNDOWN_RETRIES = 5 AutoReadOnly
 ; Лог
 Float Property LOG_FLUSH_DELAY = 0.5 AutoReadOnly
 String Property LOG_PATH = ".\\Data\\ClearThrowView\\" AutoReadOnly
@@ -58,9 +70,10 @@ Float HeldTime
 Weapon PressItem                    ; что было экипировано для броска при нажатии
 Int[] ThrowKeys                     ; клавиши контрола броска — запасной источник отпускания
 
-; --- руки ---
-Bool Hidden                         ; руки и оружие скрыты модом
-Float ReleaseTime = -100.0
+; --- поза ---
+Bool GunDownPending                 ; поза не включилась — идёт предыдущий бросок; включить после throwEnd
+Int GunDownRetries
+Form[] FilterItems                  ; фильтр OnItemRemoved (диагностика: что ушло из инвентаря при броске)
 
 String[] LogBuf
 Bool FlushPending
@@ -76,19 +89,14 @@ EndEvent
 Function Setup()
     LogBuf = new String[0]
     FlushPending = false
-    ; Сохранились со скрытыми руками — вернуть.
-    Game.ShowFirstPersonGeometry(true)
-    Hidden = false
     Actor player = Game.GetPlayer()
     RegisterForRemoteEvent(player, "OnPlayerLoadGame")
     RegisterForControl(CONTROL_THROW)
     RegisterThrowKeys()
     RegisterForExternalEvent("OnMCMSettingChange|" + MOD_NAME, "OnMCMSettingChange")
-    RegisterMenus()
     ; GetCurrentRealTime считается от запуска игры, а переменные — из сейва.
     Holding = false
     PressTime = -100.0
-    ReleaseTime = -100.0
     ; Настоящее значение из ini. 0 — это, скорее всего, наше же обнуление из прошлого сейва
     ; этой сессии: тогда остаётся уже известное.
     Float iniDelay = GardenOfEden.GetINISetting(THROW_DELAY_INI) as Float
@@ -98,6 +106,9 @@ Function Setup()
     ReadSettings()
     ApplySplitKeys()
     RegisterAnimEvents()
+    RemoveAllInventoryEventFilters()
+    FilterItems = new Form[0]
+    RegisterForRemoteEvent(player, "OnItemRemoved")
     Log("start: enabled " + Enabled + ", split keys " + SplitKeys + \
         ", fThrowDelay " + GardenOfEden.GetINISetting(THROW_DELAY_INI) + " (ini " + OriginalThrowDelay + \
         "), throw keys " + ThrowKeys)
@@ -116,14 +127,11 @@ EndFunction
 Function OnMCMSettingChange(String asModName, String asId)
     ReadSettings()
     ApplySplitKeys()
-    If !Enabled
-        Show("turned off")
-    EndIf
     Log("MCM: " + asId + " changed; fThrowDelay " + GardenOfEden.GetINISetting(THROW_DELAY_INI))
 EndFunction
 
 ; Раздельные клавиши включены — fThrowDelay 0, иначе значение из ini. От переключателя
-; «Скрывать руки» (Enabled) не зависит: это отдельная функция.
+; «Опускать оружие» (Enabled) не зависит: это отдельная функция.
 Function ApplySplitKeys()
     If SplitKeys
         Utility.SetINIFloat(THROW_DELAY_INI, 0.0)
@@ -132,8 +140,8 @@ Function ApplySplitKeys()
     EndIf
 EndFunction
 
-; Клавиши того же контрола (клавиатура, мышь, геймпад) — запасной источник отпускания: если
-; OnControlUp потеряется, руки не должны остаться скрытыми. По логу OnKeyUp приходит даже раньше.
+; Клавиши того же контрола (клавиатура, мышь, геймпад) — запасной источник отпускания (по
+; логу OnKeyUp приходит даже раньше OnControlUp и приходит, когда OnControlUp теряется).
 Function RegisterThrowKeys()
     If ThrowKeys
         Int j = 0
@@ -153,28 +161,6 @@ Function RegisterThrowKeys()
         device += 1
     EndWhile
 EndFunction
-
-; В меню руки нужны (Pip-Boy), а отпускание клавиши в меню может не прийти.
-Function RegisterMenus()
-    UnregisterForAllMenuOpenCloseEvents()
-    RegisterForMenuOpenCloseEvent("PipboyMenu")
-    RegisterForMenuOpenCloseEvent("PauseMenu")
-    RegisterForMenuOpenCloseEvent("FavoritesMenu")
-    RegisterForMenuOpenCloseEvent("VATSMenu")
-    RegisterForMenuOpenCloseEvent("LoadingMenu")
-    RegisterForMenuOpenCloseEvent("ContainerMenu")
-    RegisterForMenuOpenCloseEvent("BarterMenu")
-    RegisterForMenuOpenCloseEvent("DialogueMenu")
-    RegisterForMenuOpenCloseEvent("ExamineMenu")
-    RegisterForMenuOpenCloseEvent("WorkshopMenu")
-    RegisterForMenuOpenCloseEvent("TerminalMenu")
-EndFunction
-
-Event OnMenuOpenCloseEvent(String asMenuName, Bool abOpening)
-    If abOpening && Hidden
-        Show("menu " + asMenuName)
-    EndIf
-EndEvent
 
 Function RegisterAnimEvents()
     Actor player = Game.GetPlayer()
@@ -196,6 +182,9 @@ EndFunction
 
 ; Сравнение строк в Papyrus без учёта регистра (в лог событие приходит как "WeaponFire").
 Event OnAnimationEvent(ObjectReference akSource, String asEventName)
+    If asEventName == "throwEnd" && GunDownPending && Holding
+        StartTimer(GUNDOWN_RETRY_STEP, TIMER_GUNDOWN)
+    EndIf
     If LogEnabled && Utility.GetCurrentRealTime() - PressTime < DIAG_WINDOW
         Log("anim " + asEventName)
     EndIf
@@ -204,6 +193,18 @@ EndEvent
 Event OnAnimationEventUnregistered(ObjectReference akSource, String asEventName)
     Log("anim " + asEventName + " unregistered by game, re-registering")
     RegisterForAnimationEvent(akSource, asEventName)
+EndEvent
+
+; Диагностика: что реально ушло из инвентаря (фильтр — всё, что было экипировано для броска).
+Event ObjectReference.OnItemRemoved(ObjectReference akSender, Form akBaseItem, Int aiItemCount, ObjectReference akItemReference, ObjectReference akDestContainer)
+    If LogEnabled
+        Form now = Game.GetPlayer().GetEquippedWeapon(EQUIP_INDEX_THROWABLE)
+        String nowName = "None"
+        If now
+            nowName = now.GetName()
+        EndIf
+        Log("removed: " + akBaseItem.GetName() + " x" + aiItemCount + ", equipped now: " + nowName)
+    EndIf
 EndEvent
 
 ; Клавиша удара прикладом из MCM (keybinds.json). НЕ ПЕРЕИМЕНОВЫВАТЬ: вызывается по имени.
@@ -228,6 +229,8 @@ Event OnControlDown(String control)
     Int seq = PressSeq
     Holding = true
     Released = false
+    GunDownPending = false
+    GunDownRetries = 0
     DownDone = false
     PressTime = Utility.GetCurrentRealTime()
     HandleDown(seq)
@@ -276,8 +279,12 @@ Function HandleDown(Int seq)
         Log("down #" + seq + ": nothing to throw")
         Return
     EndIf
-    ; Скрыть, когда нажатие становится броском (fThrowDelay); с раздельными клавишами — после
-    ; SPLIT_HOLD_DELAY, чтобы короткие броски не мигали руками.
+    If FilterItems.Find(PressItem) < 0 && FilterItems.Length < 100
+        FilterItems.Add(PressItem)
+        AddInventoryEventFilter(PressItem)
+    EndIf
+    ; Опустить, когда нажатие становится броском (fThrowDelay); с раздельными клавишами — после
+    ; SPLIT_HOLD_DELAY, чтобы короткие броски не дёргали оружие.
     Float delay = SPLIT_HOLD_DELAY
     If !SplitKeys
         delay = OriginalThrowDelay
@@ -286,7 +293,7 @@ Function HandleDown(Int seq)
     If delay < MIN_HOLD_DELAY
         delay = MIN_HOLD_DELAY
     EndIf
-    Log("down #" + seq + ", hidden " + Hidden)
+    Log("down #" + seq + ": " + PressItem.GetName() + ", weapon " + WeaponName(Game.GetPlayer()))
     If Holding
         StartTimer(delay, TIMER_HOLD)
     EndIf
@@ -298,57 +305,55 @@ Function HandleUp(Int seq)
     EndIf
     UpHandledSeq = seq
     CancelTimer(TIMER_HOLD)
-    ReleaseTime = Utility.GetCurrentRealTime()
-    ; Замах рукой после отпускания — уже с руками (пробовали прятать до throwEnd: без рук
-    ; весь бросок выглядит хуже).
-    Show("release")
+    ; Позу gun down игра снимает сама, когда начинается бросок.
+    GunDownPending = false
 EndFunction
 
 Event OnTimer(Int aiTimerID)
     If aiTimerID == TIMER_HOLD
         If Holding && PressItem && !Utility.IsInMenuMode()
-            Hide()
+            ClearView()
         EndIf
-    ElseIf aiTimerID == TIMER_WATCH
-        Watch()
+    ElseIf aiTimerID == TIMER_GUNDOWN
+        If Holding && GunDownPending
+            GunDownPending = false
+            GunDownRetries += 1
+            Log("previous throw ended, retrying gun down (" + GunDownRetries + ")")
+            ClearView()
+            If GunDownPending && GunDownRetries < GUNDOWN_RETRIES
+                StartTimer(GUNDOWN_RETRY_STEP, TIMER_GUNDOWN)
+            EndIf
+        EndIf
     ElseIf aiTimerID == TIMER_FLUSH
         FlushLog()
     EndIf
 EndEvent
 
-Function Hide()
-    If !Hidden
-        Hidden = true
-        Game.ShowFirstPersonGeometry(false)
-        Log("hide (" + (Utility.GetCurrentRealTime() - PressTime) + " s after down)")
+; Оружие в кобуре — ничего не закрывает. Иначе поза «оружие опущено».
+Function ClearView()
+    Actor player = Game.GetPlayer()
+    If !player.IsWeaponDrawn()
+        Log("weapon holstered, nothing to do")
+        Return
     EndIf
-    StartTimer(WATCH_STEP, TIMER_WATCH)
+    If player.PlayIdleAction(ActionGunDown)
+        Log("gun down (" + (Utility.GetCurrentRealTime() - PressTime) + " s after down)")
+    ElseIf player.GetAnimationVariableBool("bIsThrowing")
+        ; Ещё доигрывает предыдущий бросок — позу включить после его throwEnd.
+        GunDownPending = true
+        Log("gun down refused: previous throw still running")
+    Else
+        ; Оружие ближнего боя: у их графа позы нет, и траекторию оно не закрывает.
+        Log("gun down refused, weapon " + WeaponName(player))
+    EndIf
 EndFunction
 
-Function Show(String reason)
-    If !Hidden
-        Return
+String Function WeaponName(Actor akActor)
+    Weapon w = akActor.GetEquippedWeapon(0)
+    If w
+        Return w.GetName()
     EndIf
-    Hidden = false
-    CancelTimer(TIMER_WATCH)
-    Game.ShowFirstPersonGeometry(true)
-    Log("show (" + reason + ", " + (Utility.GetCurrentRealTime() - ReleaseTime) + " s after release)")
-EndFunction
-
-; Страховка: руки не должны остаться скрытыми, если обработка отпускания потерялась.
-Function Watch()
-    If !Hidden
-        Return
-    EndIf
-    If Utility.IsInMenuMode()
-        Show("menu")
-        Return
-    EndIf
-    If !Holding
-        Show("released")
-        Return
-    EndIf
-    StartTimer(WATCH_STEP, TIMER_WATCH)
+    Return "None"
 EndFunction
 
 ; Секунды с тремя знаками после запятой (для отметок в логе).

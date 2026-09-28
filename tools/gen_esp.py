@@ -27,6 +27,7 @@ FID_QUEST = 0x01000800
 NEXT_OBJECT_ID = 0x00000801
 
 AACT_MELEE = 0x00004A59         # ActionMelee — удар прикладом
+AACT_GUN_DOWN = 0x00022A35      # ActionGunDown — поза «оружие опущено» (idle GunDownFP, граф рук 1-го лица)
 
 SCRIPT_QUEST = 'CTV:ThrowQuest'
 
@@ -35,6 +36,7 @@ def build_qust():
     r = Record(b'QUST', FID_QUEST, 'CTV_Quest')
     s = Script(SCRIPT_QUEST)
     s.prop('ActionMelee', PROP_OBJECT, AACT_MELEE)
+    s.prop('ActionGunDown', PROP_OBJECT, AACT_GUN_DOWN)
     r.add(b'VMAD', vmad([s]))
     r.add(b'FULL', zstring('Clear Throw View'))
     # 0x0111 = Start Game Enabled | 0x10 | Run Once — как у AM_Quest / QuickAid.

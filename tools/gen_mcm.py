@@ -24,12 +24,12 @@ SCRIPT = 'CTV:ThrowQuest'
 STRINGS = {
     'en': {
         'MOD_NAME': 'Clear Throw View',
-        'ABOUT': 'While you hold the throw key, your hands and weapon are hidden so that they do not cover the '
+        'ABOUT': 'While you hold the throw key, your weapon is lowered so that it does not cover the '
                  'grenade trajectory. A short press still bashes as usual.',
         'SEC_MAIN': 'Throwing',
-        'ENABLED': 'Hide hands while aiming a throw',
-        'ENABLED_HELP': 'Only when a grenade or mine is equipped. Hands and weapon are hidden as soon as the press '
-                        'becomes a throw, so a short press still bashes.',
+        'ENABLED': 'Lower the weapon while aiming a throw',
+        'ENABLED_HELP': 'Only when a grenade or mine is equipped. The weapon is lowered once the press becomes a '
+                        'throw, so a short press still bashes.',
         'SEC_SPLIT': 'Separate throw and bash keys',
         'SPLIT': 'Throw key only throws',
         'SPLIT_HELP': 'The throw key throws at once, even on a short press, and does not bash. '
@@ -42,12 +42,12 @@ STRINGS = {
     },
     'ru': {
         'MOD_NAME': 'Clear Throw View',
-        'ABOUT': 'Пока удерживается клавиша броска, руки и оружие скрыты и не закрывают траекторию гранаты. '
+        'ABOUT': 'Пока удерживается клавиша броска, оружие опущено и не закрывает траекторию гранаты. '
                  'Короткое нажатие, как и раньше, — удар прикладом.',
         'SEC_MAIN': 'Бросок',
-        'ENABLED': 'Скрывать руки при прицеливании',
-        'ENABLED_HELP': 'Только если экипирована граната или мина. Руки и оружие скрываются, когда нажатие '
-                        'становится броском, поэтому короткое нажатие — по-прежнему удар.',
+        'ENABLED': 'Опускать оружие при прицеливании',
+        'ENABLED_HELP': 'Только если экипирована граната или мина. Оружие опускается, когда нажатие становится '
+                        'броском, поэтому короткое нажатие — по-прежнему удар.',
         'SEC_SPLIT': 'Раздельные клавиши броска и удара',
         'SPLIT': 'Клавиша броска только бросает',
         'SPLIT_HELP': 'Клавиша броска бросает сразу, даже при коротком нажатии, и не бьёт прикладом. '
