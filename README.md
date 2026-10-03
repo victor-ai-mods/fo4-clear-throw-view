@@ -6,6 +6,10 @@ the weapon is drawn again. A short press still bashes as usual.
 
 Русское описание и сборка - [README.ru.md](README.ru.md).
 
+> **Versions.** This branch (`1.x`) is the main (recommended) version **1.0.0** - the main file on
+> [Nexus Mods](https://www.nexusmods.com/fallout4/mods/109411). The experimental 2.0.0 (the weapon is lowered
+> instead of holstered) is on branches `main` and `2.x`.
+
 ## How it works
 
 - The throw key is the game's **Melee** control (Alt by default, RB on a gamepad): a short press bashes,
@@ -24,7 +28,10 @@ the weapon is drawn again. A short press still bashes as usual.
 - Mod Configuration Menu (MCM)
 - Garden of Eden Papyrus Script Extender
 
-Tested on game version 1.10.163 (pre-Next-Gen).
+Tested on game version 1.10.163 (pre-Next-Gen); users report it also works on the Anniversary Edition (1.11.x).
+
+Not compatible with [Melee And Throw](https://www.nexusmods.com/fallout4/mods/63639): it unbinds the game's
+Melee control, so this mod never sees the throw key. Use this mod's separate keys option instead.
 
 ## Settings (MCM - Clear Throw View)
 
